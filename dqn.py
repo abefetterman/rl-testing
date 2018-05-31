@@ -11,10 +11,10 @@ def _preprocess_images(images):
     return new_images
 
 def _init_variable(name, shape, mean=0.0, stddev=0.0, device='/cpu:0'):
-    initializer=tf.constant_initializer(mean)
-    if stddev>0.0:
-        initializer=tf.truncated_normal_initializer(mean=mean, stddev=stddev, dtype=tf.float32)
     with tf.device(device):
+        initializer=tf.constant_initializer(mean)
+        if stddev>1e-8:
+            initializer=tf.truncated_normal_initializer(mean=mean, stddev=stddev, dtype=tf.float32)
         var = tf.get_variable(name, shape, initializer=initializer, dtype=tf.float32)
     return var
 
@@ -24,7 +24,7 @@ def _log_activations(x):
 
 
 class DQN(object):
-    def __init__(self, actions=6, replay_buffer=100, shape=(1,84,84,4)):
+    def __init__(self, actions=6, replay_buffer=100, shape=[None,84,84,4]):
         self.actions = actions
         self.replay_buffer = replay_buffer
         self.img_shape = shape
@@ -53,7 +53,8 @@ class DQN(object):
             _log_activations(conv2)
 
         with tf.variable_scope('dense3') as scope:
-            reshape = tf.reshape(conv2, [images.get_shape().as_list()[0], -1])
+            new_dims = tf.constant([-1, 3872], dtype=tf.int32)
+            reshape = tf.reshape(conv2, new_dims)
             dim = reshape.get_shape().as_list()[1]
             weights = _init_variable('weights', shape=[dim, 256], stddev=4e-2)
             biases = _init_variable('biases', [256], mean=0.1)
@@ -70,7 +71,7 @@ class DQN(object):
 
     def build(self):
         images = tf.placeholder(tf.float32, shape=self.img_shape)
-        return self._eval(images)
+        return images, self._eval(images)
 
     def eval(self, state):
         #if len(state)!=4:

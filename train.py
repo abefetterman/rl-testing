@@ -4,13 +4,16 @@ from utils import *
 from dqn import DQN
 
 model=DQN()
+images,result=model.build()
+init = tf.global_variables_initializer()
 env = AtariEnv(game='pong', obs_type='image', frameskip=4)
 action_space=6
 episodes=1
 done=False
 reward=0
-states = RecentStateBuffer(4)
+states = RecentStateBuffer(4, preprocess=preprocess_image)
 with tf.Session() as sess:
+    sess.run(init)
     for i in range(episodes):
         states.reset()
         state = env.reset()
@@ -24,5 +27,8 @@ with tf.Session() as sess:
             new_states=states.get()
             #DQN.add_transition(last_states,action,reward,new_states,done)
             last_states=new_states
-        out=model.eval(last_states)
-        sess.run(out)
+        state_images=preprocess_images(last_states)
+        print(state_images)
+        action_values=sess.run(result,feed_dict={images:state_images})
+        targets=
+        loss=l2_loss()
