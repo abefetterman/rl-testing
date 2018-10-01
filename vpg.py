@@ -29,7 +29,7 @@ def get_loss(logits, act_ph, adv_ph, n_acts=3):
         loss = -tf.reduce_mean(adv_ph * log_probs)
     return loss
 
-def train(sess, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
+def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
           lr=1e-2, gamma=0.99, n_iters=50, batch_size=5000
           ):
     env = gym.make(env_name)
@@ -43,6 +43,9 @@ def train(sess, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
     act_ph = tf.placeholder(shape=(None,), dtype=tf.int32)
     loss = get_loss(logits, act_ph, adv_ph, n_acts)
     train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(loss)
+
+    if (sess==None):
+        sess=tf.InteractiveSession()
 
     sess.run(tf.global_variables_initializer())
 
