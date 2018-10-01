@@ -2,7 +2,16 @@ import tensorflow as tf
 import numpy as np
 import gym
 
-class DQNModel(object):
+def discount_cumsum(x, gamma):
+    n = len(x)
+    x = np.array(x)
+    y = gamma**np.arange(n)
+    z = np.zeros_like(x, dtype=np.float32)
+    for j in range(n):
+        z[j] = sum(x[j:] * y[:n-j])
+    return z
+
+class A2CModel(object):
     def __init__(self, hidden_dim=32, n_layers=1, n_acts=3):
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
@@ -31,21 +40,20 @@ class ReplayBuffer(object):
         return [x for x in zip(*s)]
 
 def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
-          lr=1e-2, gamma=0.99, n_iters=50, batch_size=5000, eps=0.1,
-          n_samples=10, buffer_size = 1000,
+          lr=1e-2, gamma=0.99, n_iters=50, batch_size=5000, eps=0.1
           ):
     env = gym.make(env_name)
     obs_dim = env.observation_space.shape[0]
     n_acts = env.action_space.n
 
-    dqn = DQNModel(hidden_dim, n_layers, n_acts)
+    model = A2CModel(hidden_dim, n_layers, n_acts)
 
     obs_ph = tf.placeholder(shape=(None, obs_dim), dtype=tf.float32)
-    predicted_values = dqn.apply(obs_ph)
+    predicted_values = model.apply(obs_ph)
     greedy_action = tf.argmax(predicted_values, 1)
     greedy_value = tf.reduce_max(predicted_values, 1)
 
-    buffer = ReplayBuffer(buffer_size)
+    buffer = ReplayBuffer(1000)
 
     act_ph = tf.placeholder(shape=(None,), dtype=tf.int32)
     done_ph = tf.placeholder(shape=(None,), dtype=tf.float32)
@@ -79,8 +87,8 @@ def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
             batch_acts.append(act)
             ep_rews.append(rew)
 
-            if len(buffer) > n_samples:
-                obss, acts, rews, dones, next_obss = buffer.sample(n_samples)
+            if len(buffer) > 10:
+                obss, acts, rews, dones, next_obss = buffer.sample(10)
                 next_values = sess.run(greedy_value, {obs_ph: np.vstack(next_obss)})
                 step_loss, _ = sess.run([loss, train_op], feed_dict={act_ph: np.array(acts),
                                                                       reward_ph: np.array(rews),
