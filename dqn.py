@@ -64,19 +64,18 @@ def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
     sess.run(tf.global_variables_initializer())
 
     for i in range(n_iters):
-        batch_obs, batch_acts, batch_rtgs, batch_rets, batch_lens = [], [], [], [], []
+        batch_rets, batch_lens = [], []
 
         obs, rew, done, ep_rews = env.reset(), 0, False, []
-        batch_loss = 0
+        batch_loss, batch_steps = 0, 0
         while True:
-            batch_obs.append(obs.copy())
+            batch_steps += 1
             act = sess.run(greedy_action, {obs_ph: obs.reshape(1,-1)})[0]
             if random.random() < eps:
                 act = random.randrange(n_acts)
             next_obs, rew, done, _ = env.step(act)
             buffer.add((obs.reshape(1,-1), act, rew, done, next_obs.reshape(1,-1)))
             obs = next_obs
-            batch_acts.append(act)
             ep_rews.append(rew)
 
             if len(buffer) > n_samples:
@@ -94,9 +93,8 @@ def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
             if done:
                 batch_rets.append(sum(ep_rews))
                 batch_lens.append(len(ep_rews))
-                batch_rtgs.extend(discount_cumsum(ep_rews, gamma))
                 obs, rew, done, ep_rews = env.reset(), 0, False, []
-                if len(batch_obs) > batch_size:
+                if batch_steps > batch_size:
                     break
 
         print('itr: %d \t loss: %.3f \t return: %.3f \t ep_len: %.3f'%
