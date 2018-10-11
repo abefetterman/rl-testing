@@ -3,17 +3,28 @@ import numpy as np
 import gym
 
 class DQNModel(object):
-    def __init__(self, hidden_dim=32, n_layers=1, n_acts=3):
+    def __init__(self, hidden_dim=32, n_layers=1, n_acts=3, name='model'):
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
         self.n_acts = n_acts
+        self.name = name
     def apply(self, obs_ph):
-        with tf.variable_scope('model'):
+        with tf.variable_scope(self.name):
             net = obs_ph
             for size in [self.hidden_dim]*self.n_layers:
                 net = tf.layers.dense(net, units=self.hidden_dim, activation=tf.nn.relu)
             value = tf.layers.dense(net, units=self.n_acts, activation=None)
         return value
+    def get_trainable_vars(self):
+        return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name)
+    def copy_from(self, other_network):
+        my_vars = self.get_trainable_vars()
+        other_vars = other_network.get_trainable_vars()
+
+        # y <- x
+        ops = [y.assign(x) for x,y in zip(other_vars,my_vars)]
+
+        return ops
 
 import random
 class ReplayBuffer(object):
@@ -62,20 +73,24 @@ class PriorityBuffer(object):
             self.priorities[i] = e
         self.priorities_max = max(self.priorities)
 
+
+
 def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
           lr=1e-2, gamma=0.99, n_iters=50, batch_size=5000, eps=0.1,
           n_samples=100, buffer_size = 10000, update_period = 10,
+          target_replace_period=100,
           ):
     env = gym.make(env_name)
     obs_dim = env.observation_space.shape[0]
     n_acts = env.action_space.n
 
-    dqn = DQNModel(hidden_dim, n_layers, n_acts)
+    dqn_train = DQNModel(hidden_dim, n_layers, n_acts, name='train_model')
+    dqn_target = DQNModel(hidden_dim, n_layers, n_acts, name='target_model')
 
     obs_ph = tf.placeholder(shape=(None, obs_dim), dtype=tf.float32)
-    predicted_values = dqn.apply(obs_ph)
-    greedy_action = tf.argmax(predicted_values, 1)
-    greedy_value = tf.reduce_max(predicted_values, 1)
+    predicted_values_target = dqn_target.apply(obs_ph)
+    greedy_action = tf.argmax(predicted_values_target, 1)
+    greedy_value = tf.reduce_max(predicted_values_target, 1)
 
     buffer = PriorityBuffer(buffer_size)
 
@@ -84,18 +99,22 @@ def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
     reward_ph = tf.placeholder(shape=(None,), dtype=tf.float32)
     weight_ph = tf.placeholder(shape=(None,), dtype=tf.float32)
     next_state_value_ph = tf.placeholder(shape=(None,), dtype=tf.float32)
+
+    predicted_values_train = dqn_train.apply(obs_ph)
     discounted_reward = reward_ph + gamma * (1 - done_ph) * next_state_value_ph
     action_one_hots = tf.one_hot(act_ph, n_acts)
-    estimated_reward = tf.reduce_sum(predicted_values * action_one_hots, 1)
+    estimated_reward = tf.reduce_sum(predicted_values_train * action_one_hots, 1)
 
     td_error = discounted_reward - estimated_reward
     loss = tf.reduce_sum(td_error * td_error * weight_ph)
     train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(loss)
+    copy_op = dqn_target.copy_from(dqn_train)
 
     if (sess==None):
         sess=tf.InteractiveSession()
 
     sess.run(tf.global_variables_initializer())
+    sess.run(copy_op)
 
     for i in range(n_iters):
         batch_rets, batch_lens = [], []
@@ -126,7 +145,8 @@ def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
                                           })
                 buffer.update_priorities(idxs, np.abs(new_priorities))
                 batch_loss += step_loss / batch_size
-
+            if batch_steps > 0 and (batch_steps % target_replace_period) == 0:
+                sess.run(copy_op)
 
             if done:
                 batch_rets.append(sum(ep_rews))
