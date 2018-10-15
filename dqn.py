@@ -1,19 +1,8 @@
 import tensorflow as tf
 import numpy as np
 import gym
-
-class DQNModel(object):
-    def __init__(self, hidden_dim=32, n_layers=1, n_acts=3):
-        self.hidden_dim = hidden_dim
-        self.n_layers = n_layers
-        self.n_acts = n_acts
-    def apply(self, obs_ph):
-        with tf.variable_scope('model'):
-            net = obs_ph
-            for size in [self.hidden_dim]*self.n_layers:
-                net = tf.layers.dense(net, units=self.hidden_dim, activation=tf.nn.relu)
-            value = tf.layers.dense(net, units=self.n_acts, activation=None)
-        return value
+from mlp import MLP
+import conv_net
 
 import random
 class ReplayBuffer(object):
@@ -70,7 +59,7 @@ def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
     obs_dim = env.observation_space.shape[0]
     n_acts = env.action_space.n
 
-    dqn = DQNModel(hidden_dim, n_layers, n_acts)
+    dqn = MLP(hidden_dim, n_layers, n_acts)
 
     obs_ph = tf.placeholder(shape=(None, obs_dim), dtype=tf.float32)
     predicted_values = dqn.apply(obs_ph)

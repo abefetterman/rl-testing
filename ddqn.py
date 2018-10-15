@@ -1,30 +1,16 @@
 import tensorflow as tf
 import numpy as np
 import gym
+from mlp import MLP
 
-class DQNModel(object):
-    def __init__(self, hidden_dim=32, n_layers=1, n_acts=3, name='model'):
-        self.hidden_dim = hidden_dim
-        self.n_layers = n_layers
-        self.n_acts = n_acts
-        self.name = name
-    def apply(self, obs_ph):
-        with tf.variable_scope(self.name):
-            net = obs_ph
-            for size in [self.hidden_dim]*self.n_layers:
-                net = tf.layers.dense(net, units=self.hidden_dim, activation=tf.nn.relu)
-            value = tf.layers.dense(net, units=self.n_acts, activation=None)
-        return value
-    def get_trainable_vars(self):
-        return tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=self.name)
-    def copy_from(self, other_network):
-        my_vars = self.get_trainable_vars()
-        other_vars = other_network.get_trainable_vars()
+def copy_trainable_vars(to_model, from_model):
+    to_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=to_model.name)
+    from_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope=from_model.name)
 
-        # y <- x
-        ops = [y.assign(x) for x,y in zip(other_vars,my_vars)]
+    # y <- x
+    ops = [y.assign(x) for x,y in zip(from_vars,to_vars)]
 
-        return ops
+    return ops
 
 import random
 class ReplayBuffer(object):
@@ -84,8 +70,8 @@ def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
     obs_dim = env.observation_space.shape[0]
     n_acts = env.action_space.n
 
-    dqn_train = DQNModel(hidden_dim, n_layers, n_acts, name='train_model')
-    dqn_target = DQNModel(hidden_dim, n_layers, n_acts, name='target_model')
+    dqn_train = MLP(hidden_dim, n_layers, n_acts, name='train_model')
+    dqn_target = MLP(hidden_dim, n_layers, n_acts, name='target_model')
 
     obs_ph = tf.placeholder(shape=(None, obs_dim), dtype=tf.float32)
     predicted_values_target = dqn_target.apply(obs_ph)
@@ -108,7 +94,7 @@ def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
     td_error = discounted_reward - estimated_reward
     loss = tf.reduce_sum(td_error * td_error * weight_ph)
     train_op = tf.train.AdamOptimizer(learning_rate=lr).minimize(loss)
-    copy_op = dqn_target.copy_from(dqn_train)
+    copy_op = copy_trainable_vars(dqn_target, dqn_train)
 
     if (sess==None):
         sess=tf.InteractiveSession()
