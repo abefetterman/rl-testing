@@ -1,8 +1,8 @@
 import tensorflow as tf
 import numpy as np
 import gym
-from mlp import MLP
-import conv_net
+from oned import OneDProblem
+from atari import AtariProblem
 
 import random
 class ReplayBuffer(object):
@@ -51,17 +51,16 @@ class PriorityBuffer(object):
             self.priorities[i] = e
         self.priorities_max = max(self.priorities)
 
-def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
-          lr=1e-2, gamma=0.99, n_iters=50, batch_size=5000, eps=0.1,
+def train(problem, sess=None,
+          lr=1e-4, gamma=0.99, n_iters=50, batch_size=5000, eps=0.1,
           n_samples=100, buffer_size = 10000, update_period = 10,
           ):
-    env = gym.make(env_name)
-    obs_dim = env.observation_space.shape[0]
+    env = problem.make_env()
     n_acts = env.action_space.n
 
-    dqn = MLP(hidden_dim, n_layers, n_acts)
+    dqn = problem.make_net(env)
 
-    obs_ph = tf.placeholder(shape=(None, obs_dim), dtype=tf.float32)
+    obs_ph = problem.make_obs_ph(env)
     predicted_values = dqn.apply(obs_ph)
     greedy_action = tf.argmax(predicted_values, 1)
     greedy_value = tf.reduce_max(predicted_values, 1)
@@ -89,15 +88,18 @@ def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
     for i in range(n_iters):
         batch_rets, batch_lens = [], []
 
-        obs, rew, done, ep_rews = env.reset(), 0, False, []
+        obs_raw, rew, done, ep_rews = env.reset(), 0, False, []
+        obs = problem.preprocess_obs(obs_raw)
         batch_loss, batch_steps = 0, 0
         while True:
+            env.render()
             batch_steps += 1
-            act = sess.run(greedy_action, {obs_ph: obs.reshape(1,-1)})[0]
+            act = sess.run(greedy_action, {obs_ph: obs})[0]
             if random.random() < eps:
                 act = random.randrange(n_acts)
-            next_obs, rew, done, _ = env.step(act)
-            buffer.add((obs.reshape(1,-1), act, rew, done, next_obs.reshape(1,-1)))
+            next_obs_raw, rew, done, _ = env.step(act)
+            next_obs = problem.preprocess_obs(next_obs_raw)
+            buffer.add((obs, act, rew, done, next_obs))
             obs = next_obs
             ep_rews.append(rew)
 
@@ -115,11 +117,13 @@ def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
                                           })
                 buffer.update_priorities(idxs, np.abs(new_priorities))
                 batch_loss += step_loss / batch_size
+                print(step_loss/batch_size)
 
 
             if done:
                 batch_rets.append(sum(ep_rews))
                 batch_lens.append(len(ep_rews))
+                print('{}, {} avg'.format(sum(ep_rews),len(ep_rews)))
                 obs, rew, done, ep_rews = env.reset(), 0, False, []
                 if batch_steps > batch_size:
                     break
@@ -129,7 +133,8 @@ def train(sess=None, env_name='CartPole-v0', hidden_dim=32, n_layers=1,
 
 if __name__ == '__main__':
     try:
+        problem = AtariProblem()
         with tf.Session() as sess:
-            train(sess)
+            train(problem, sess)
     except KeyboardInterrupt:
         print('bye')

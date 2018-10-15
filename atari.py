@@ -1,4 +1,5 @@
 import tensorflow as tf
+import gym
 
 def _log_activations(x):
     tf.summary.histogram(x.op.name+'/activations', x)
@@ -7,16 +8,7 @@ def _log_activations(x):
 class ConvNet(object):
     def __init__(self, actions=6, name='conv_net'):
         self.actions = actions
-
-    def preprocess(self, images):
-        new_images = tf.convert_to_tensor(images)
-        new_images = tf.image.rgb_to_grayscale(new_images)
-        new_images = tf.image.resize_image_with_crop_or_pad(new_images, 160, 160)
-        new_size = tf.constant([84,84])
-        new_images = tf.image.resize_images(new_images,new_size)
-        new_images = tf.squeeze(new_images,axis=3)
-        new_images = tf.transpose(new_images,perm=[1,2,0])
-        return new_images
+        self.name = name
 
     def apply(self, images):
         with tf.variable_scope(self.name):
@@ -58,3 +50,29 @@ class ConvNet(object):
             _log_activations(logit)
 
         return logit
+
+class AtariProblem(object):
+    def __init__(self, env_name='Pong-v0'):
+        self.env_name = env_name
+
+    def make_env(self):
+        return gym.make(self.env_name)
+
+    def make_net(self, env, name='conv_net'):
+        n_acts = env.action_space.n
+        return ConvNet(n_acts, name=name)
+
+    def make_obs_ph(self, env):
+        obs_dim = env.observation_space.shape
+        return tf.placeholder(shape=(None, 84, 84, 1), dtype=tf.float32)
+
+    def preprocess_obs(self, images):
+        new_images = tf.convert_to_tensor(images)
+        new_images = tf.image.rgb_to_grayscale(new_images)
+        new_images = tf.image.resize_image_with_crop_or_pad(new_images, 160, 160)
+        new_size = tf.constant([84,84])
+        new_images = tf.image.resize_images(new_images,new_size)
+        # new_images = tf.squeeze(new_images,axis=-1)
+        # new_images = tf.transpose(new_images,perm=[1,2,0])
+        new_images = tf.expand_dims(new_images, 0)
+        return new_images.eval()
